@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 polars = { version = "0.43.1", features = ["lazy","sql"] }
+struct_iterable = "0.1.1"

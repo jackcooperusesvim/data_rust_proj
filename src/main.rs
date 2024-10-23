@@ -10,27 +10,43 @@ struct CsvParser {
     has_header: bool,
     data_format: Option<SchemaRef>,
     dta: Option<DataFrame>,
-    schema: Option<Schema>,
+    output_lfc: Option<LFConstructable>,
 }
 
 struct Sql {
-    input_schema: Option<Schema>,
-    output_schema: Option<Schema>,
+    input_schemas: Vec<LFConstructable>,
+    output_schemas: Vec<Schema>,
     expression: String,
 }
+
+#[derive(Clone)]
+struct LFConstructable {
+    schema: Schema,
+    name: String,
+}
+impl LFConstructable {
+    fn new(schema: Schema, name: String) -> Self {
+        Self { schema, name }
+    }
+    fn construct(&self) -> LazyFrame {
+        //DataFrame::from_rows_and_schema(self.iter().map(|schema, name| None), self.schema.clone())?
+    }
+}
+
 pub enum BlockOptions {
     Sql {
         expression: String,
-        input_schema: Schema,
+        input_lfc: Vec<LFConstructable>,
     },
     CsvParser {
         source: String,
+        name: Option<String>,
     },
 }
 
 pub trait Block {
     // Immutable
-    fn schema_test(&self, opts: BlockOptions) -> Result<Schema, String>;
+    fn schema_test(&self, opts: BlockOptions) -> Result<LFConstructable, String>;
 
     // Mutable
     fn data_pass_through(
@@ -38,21 +54,29 @@ pub trait Block {
         input_data: Option<LazyFrame>,
         copy: bool,
     ) -> Result<LazyFrame, String>;
-    fn prepare(&mut self, opts: BlockOptions) -> Result<Schema, String>;
+    fn prepare(&mut self, opts: BlockOptions) -> Result<LFConstructable, String>;
 }
 
+impl Sql {
+    fn gen_schema(&self) -> Result<LFConstructable, String> {
+        Err("Not Implemented".to_string())
+    }
+}
 impl Block for Sql {
-    fn schema_test(&self, opts: BlockOptions) -> Result<Schema, String> {}
+    fn schema_test(&self, opts: BlockOptions) -> Result<LFConstructable, String> {
+        Err("Not Implemented".to_string())
+    }
 
-    fn prepare(&mut self, opts: BlockOptions) -> Result<Schema, String> {
+    fn prepare(&mut self, opts: BlockOptions) -> Result<LFConstructable, String> {
         match opts {
             BlockOptions::Sql {
                 expression,
-                input_schema,
+                input_lfc,
             } => {
                 self.expression = expression;
-                self.input_schema = Some(input_schema.clone());
-                Ok(input_schema)
+                self.input_schemas = input_lfc;
+                let mut lf_inputs: Vec<LFConstructable> = Vec::new();
+                Ok(input_schemas)
             }
             _ => Err("Must provide sql options".to_string()),
         }
@@ -80,7 +104,7 @@ impl Block for Sql {
 impl Block for CsvParser {
     fn schema_test(&self, opts: BlockOptions) -> Result<Schema, String> {
         match opts {
-            BlockOptions::CsvParser => match &self.schema {
+            BlockOptions::CsvParser => match &self.output_lfc {
                 Some(schema) => Ok(schema.clone()),
                 None => Err("No schema in CsvParser".to_string()),
             },
@@ -106,7 +130,7 @@ impl Block for CsvParser {
             );
         };
 
-        self.schema = Some(match &self.dta {
+        self.output_lfc = Some(match &self.dta {
             Some(data) => data.schema(),
             None => {
                 self.dta = Some(
@@ -141,14 +165,14 @@ impl Block for CsvParser {
                     );
                 };
 
-                match &self.schema {
+                match &self.output_lfc {
                     Some(_schema) => {}
-                    None => self.schema = Some(self.dta.as_ref().unwrap().schema()),
+                    None => self.output_lfc = Some(self.dta.as_ref().unwrap().schema()),
                 };
 
-                self.schema = Some(self.schema.as_ref().unwrap().clone());
+                self.output_lfc = Some(self.output_lfc.as_ref().unwrap().clone());
 
-                match &self.schema {
+                match &self.output_lfc {
                     Some(schema) => Ok(schema.clone()),
                     None => Err("No schema in CsvParser".to_string()),
                 }

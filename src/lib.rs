@@ -1,7 +1,7 @@
 pub mod anchor;
 pub mod chain;
+pub mod config;
 pub mod data_holders;
-
 use polars::prelude::*;
 const SIMPLE_SQL_TABLE_NAME: &str = "simple_sql_table";
 //Data Centered Types

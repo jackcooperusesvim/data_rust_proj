@@ -1,39 +1,44 @@
 use super::ProcessingLink;
 //-----------------------
+use crate::config::DEFAULT_NAME;
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame, Schema};
 use polars::sql::SQLContext;
 use std::ops::Deref;
 
 pub struct SimpleSql {
-    input_schema: Schema,
-    output_schema: Schema,
+    input_schema: Option<Schema>,
     query: String,
+    name: String,
 }
+
 impl ProcessingLink for SimpleSql {
     fn schema_test(&self, input_schema: Schema) -> Result<Schema, String> {
         Ok(self.output_schema.clone())
     }
+    fn prepare(&mut self, input_schema: Schema) -> Result<Schema, String> {}
 
     //TODO: ACTUALLY IMPLEMENT THIS
     fn data_pass_through(
         &mut self,
-        input_data: Option<LazyFrame>,
+        input_data: LazyFrame,
         copy: bool,
     ) -> Result<LazyFrame, String> {
-        match input_data {
-            Some(data) => {
-                if copy {
-                    Ok(data.clone())
-                } else {
-                    Ok(data)
-                }
-            }
-            None => Err("No input data".to_string()),
-        }
+        let cont = SQLContext::new();
+
+        cont.register(DEFAULT_NAME, input_data);
+        cont.execute(query)
     }
 }
 
 impl SimpleSql {
+    pub fn default() -> SimpleSql {
+        SimpleSql {
+            input_schema: None,
+            query: "SELECT * FROM tb;".to_string(),
+            name: DEFAULT_NAME.to_string(),
+        }
+    }
+
     pub fn prepare(&mut self, query: String, input_schema: Schema) -> Result<Schema, String> {
         let mut sql_cont: SQLContext = SQLContext::new();
 

@@ -1,16 +1,13 @@
 pub mod link;
+use crate::data_holders::*;
 use link::ProcessingLink;
+use min_max::min;
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame, Schema};
 use std::ops::Deref;
 
-impl LFConstructable {
-    pub fn construct(&self) -> LazyFrame {
-        DataFrame::empty_with_schema(&self.schema.clone()).lazy()
-    }
-}
-
 struct ProcessingChain {
-    processing_links: Vec<Box<dyn ProcessingLink>>,
+    links: Vec<Box<dyn ProcessingLink>>,
+    rename: Option<String>,
 }
 
 impl ProcessingChain {
@@ -18,8 +15,8 @@ impl ProcessingChain {
         let name = in_lfc.name;
         let mut current_schema = in_lfc.schema;
 
-        for link in &self.processing_links {
-            current_schema = link.deref().schema_test(current_schema)?
+        for link in &self.links {
+            current_schema = link.schema_test(current_schema)?
         }
 
         Ok(LFConstructable {
@@ -28,18 +25,34 @@ impl ProcessingChain {
         })
     }
 
-    fn data_pass_through(&mut self, input_data: LazyFrame) -> Result<LazyFrame, String> {
-        let mut current_lf = in_lfc.construct();
+    fn data_pass_through(&mut self, input_data: NamedLazyFrame) -> Result<NamedLazyFrame, String> {
+        let name = input_data.name;
+        let mut current_lf = input_data.frame;
 
-        for link in &self.processing_links {
-            current_lf = link.deref().data_pass_through(Some())?
+        for link in &mut self.links {
+            current_lf = link.data_pass_through(current_lf, false)?
         }
 
-        Ok(LFConstructable {
-            schema: current_lf,
-            name,
+        Ok(NamedLazyFrame {
+            frame: current_lf,
+            name: self.rename.clone().unwrap_or(name),
         })
     }
 
-    fn add_link(&mut self, index: usize, link: Box<dyn ProcessingLink>) -> Result<(), String>;
+    fn add_link(&mut self, index: usize, link: Box<dyn ProcessingLink>) -> Result<(), String> {
+        let chain_len = self.links.len();
+
+        let mut count: usize = 0;
+        while count < index && count < chain_len {
+            self.links.count += 1;
+        }
+
+        if index == chain_len {
+            self.links.insert(index, link);
+        } else {
+            self.links.push(link);
+        }
+
+        Ok(())
+    }
 }

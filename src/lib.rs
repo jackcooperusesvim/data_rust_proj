@@ -1,153 +1,22 @@
+pub mod anchor;
+pub mod chain;
+pub mod data_movers;
+
 use polars::prelude::*;
-use polars::sql::SQLContext;
 use std::ops::Deref;
 use std::path::PathBuf;
-
 const SIMPLE_SQL_TABLE_NAME: &str = "simple_sql_table";
 //Data Centered Types
-struct NamedLazyFrame {
-    name: String,
-    frame: LazyFrame,
-}
-
-struct LFConstructable {
-    schema: Schema,
-    name: String,
-}
-
-impl LFConstructable {
-    pub fn construct(&self) -> LazyFrame {
-        DataFrame::empty_with_schema(&self.schema.clone()).lazy()
-    }
-}
 
 //Processing Links (Lowest Level of Encapsulation)
-pub trait ProcessingLink {
-    // Immutable
-    fn schema_return(&self) -> Result<Schema, String>;
 
-    // Mutable
-    fn data_pass_through(
-        &mut self,
-        input_data: Option<LazyFrame>,
-        copy: bool,
-    ) -> Result<LazyFrame, String>;
-
-    fn prepare(&mut self, opts: LinkOptions) -> Result<Schema, String>;
-}
-
-//Processing Link 1: Single Table Single Query (Simple) Sql
-struct SimpleSql {
-    input_schema: Schema,
-    output_schema: Schema,
-    query: String,
-}
-
-impl ProcessingLink for SimpleSql {
-    fn schema_return(&self) -> Result<Schema, String> {
-        Ok(self.output_schema.clone())
-    }
-
-    fn data_pass_through(
-        &mut self,
-        input_data: Option<LazyFrame>,
-        copy: bool,
-    ) -> Result<LazyFrame, String> {
-        match input_data {
-            Some(data) => {
-                if copy {
-                    Ok(data.clone())
-                } else {
-                    Ok(data)
-                }
-            }
-            None => Err("No input data".to_string()),
-        }
-    }
-
-    fn prepare(&mut self, opts: LinkOptions) -> Result<Schema, String> {
-        match opts {
-            LinkOptions::SimpleSql {
-                query,
-                input_schema,
-            } => {
-                let mut sql_cont: SQLContext = SQLContext::new();
-
-                sql_cont.register(
-                    SIMPLE_SQL_TABLE_NAME,
-                    DataFrame::empty_with_schema(&input_schema).lazy(),
-                );
-
-                let res = sql_cont.execute(query.as_str());
-                match res {
-                    Ok(mut out_lf) => {
-                        self.query = query;
-                        match out_lf.collect_schema() {
-                            Ok(schema_arc) => {
-                                self.output_schema = schema_arc.deref().clone();
-                                Ok(self.output_schema.clone())
-                            }
-                            Err(err) => {
-                                err.to_string().as_str();
-                                Err(format!("Error with query: {}", err.to_string()))
-                            }
-                        }
-                    }
-                    Err(_) => Err(format!("Error with query: {}", res.err().unwrap())),
-                }
-            }
-            _ => Err("Must provide SimpleSql options".to_string()),
-        }
-    }
-}
-
-fn build_ProcessingLink(opts: &LinkOptions) -> Result<Box<dyn ProcessingLink>, String> {
-    match opts {
-        // BlockOptions::Sql { query, input_lfc } => {
-        //     let mut sql_cont: SQLContext = SQLContext::new();
-        //     let mut lf_inputs: Vec<LFConstructable> = Vec::new();
-        //
-        //     input_lfc
-        //         .iter()
-        //         .map(|lfc| sql_cont.register(lfc.name.as_str(), lfc.construct()));
-        //
-        //     match sql_cont.execute(query.as_str()) {
-        //         Ok(mut res) => match res.collect_schema() {
-        //             Ok(schema_arc) => Ok(Box::new(Sql {
-        //                 input_schemas: input_lfc.clone(),
-        //                 output_schemas: schema_arc.deref().clone(),
-        //                 query: query.clone(),
-        //             })),
-        //             Err(err) => Err(err.to_string()),
-        //         },
-        //         Err(err) => Err(err.to_string()),
-        //     }
-        // }
-        _ => Err("Must provide sql options".to_string()),
-    }
-}
-
-pub trait JoinerLink {
+pub trait Link {
     fn schema_test(&self) -> Result<Vec<LFConstructable>, String>;
 
     fn data_pass_through(
         &mut self,
         input_data: Vec<NamedLazyFrame>,
     ) -> Result<Vec<NamedLazyFrame>, String>;
-}
-
-struct ProcessingChain {
-    input_lfc: LFConstructable,
-    output_lfc: LFConstructable,
-    processing_links: Vec<Box<dyn ProcessingLink>>,
-}
-
-impl ProcessingChain {
-    fn schema_test(&self) -> Result<LFConstructable, String>;
-
-    fn data_pass_through(&mut self, input_data: Option<LazyFrame>) -> Result<LazyFrame, String>;
-
-    fn prepare(&mut self, opts: LinkOptions) -> Result<LFConstructable, String>;
 }
 
 struct CsvParser {
@@ -163,23 +32,13 @@ struct Sql {
     query: String,
 }
 
-pub enum LinkOptions {
-    SimpleSql {
-        query: String,
-        input_schema: Schema,
-    },
-    CsvParser {
-        source: String,
-        name: Option<String>,
-    },
-}
-
-pub trait DataInputBlock {
+pub trait DataAnchor {
     fn load_data(&mut self, opts: LinkOptions) -> Result<LFConstructable, String>;
     fn pop(&mut self, opts: LinkOptions) -> Result<LazyFrame, String>;
     fn set_name(&mut self, name: &str);
-    fn lfc_return(&self) -> Result<LFConstructable, String>;
     fn rebuild(&mut self, source: &str);
+
+    fn lfc_return(&self) -> Result<LFConstructable, String>;
 }
 
 // pub trait MultiBlock {
@@ -289,6 +148,3 @@ pub trait DataInputBlock {
 //         Err(err) => Err(err.to_string()),
 //     }
 // }
-fn main() {
-    println!("Hello, world!");
-}

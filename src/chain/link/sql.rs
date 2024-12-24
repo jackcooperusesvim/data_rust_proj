@@ -1,4 +1,8 @@
+use super::ProcessingLink;
+//-----------------------
+use polars::prelude::{DataFrame, IntoLazy, LazyFrame, Schema};
 use polars::sql::SQLContext;
+use std::ops::Deref;
 
 pub struct SimpleSql {
     input_schema: Schema,
@@ -33,7 +37,10 @@ impl SimpleSql {
     pub fn prepare(&mut self, query: String, input_schema: Schema) -> Result<Schema, String> {
         let mut sql_cont: SQLContext = SQLContext::new();
 
-        sql_cont.register(query.as_str(), LazyFrame::empty_with_schema(&input_schema));
+        sql_cont.register(
+            query.as_str(),
+            DataFrame::empty_with_schema(&input_schema).lazy(),
+        );
 
         let res = sql_cont.execute(query.as_str());
         match res {

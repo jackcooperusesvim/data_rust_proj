@@ -1,12 +1,9 @@
 pub mod link;
-use crate::data_holders::*;
-use link::ProcessingLink;
-use min_max::min;
+use link::Link;
 use polars::prelude::{DataFrame, IntoLazy, LazyFrame, Schema};
-use std::ops::Deref;
 
 struct ProcessingChain {
-    links: Vec<Box<dyn ProcessingLink>>,
+    links: Vec<Link>,
     rename: Option<String>,
 }
 
@@ -30,7 +27,7 @@ impl ProcessingChain {
         let mut current_lf = input_data.frame;
 
         for link in &mut self.links {
-            current_lf = link.data_pass_through(current_lf, false)?
+            current_lf = link.data_pass_through(current_lf)?
         }
 
         Ok(NamedLazyFrame {
@@ -39,7 +36,7 @@ impl ProcessingChain {
         })
     }
 
-    fn add_link(&mut self, index: usize, link: Box<dyn ProcessingLink>) -> Result<(), String> {
+    fn add_link(&mut self, index: usize, link: Box<dyn Link>) -> Result<(), String> {
         let chain_len = self.links.len();
 
         let mut count: usize = 0;
